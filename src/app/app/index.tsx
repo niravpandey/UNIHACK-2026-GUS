@@ -321,7 +321,7 @@ export default function AppView() {
             const rectX = node.x - rectSize / 2;
             const rectY = node.y - rectSize / 2;
             const radius = rectSize / 2;
-            const iconPadding = Math.max(4, rectSize * 0.2);
+            const iconPadding = Math.max(2, rectSize * 0.12);
             const iconSize = rectSize - iconPadding * 2;
 
             ctx.beginPath();
@@ -345,8 +345,19 @@ export default function AppView() {
               }
 
               if (cachedImage && cachedImage.complete) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(
+                  rectX + iconPadding + iconSize / 2,
+                  rectY + iconPadding + iconSize / 2,
+                  iconSize / 2,
+                  0,
+                  2 * Math.PI,
+                );
+                ctx.clip();
                 ctx.imageSmoothingEnabled = true;
                 ctx.imageSmoothingQuality = 'high';
+                ctx.filter = 'hue-rotate(185deg) saturate(1.15)';
                 ctx.drawImage(
                   cachedImage,
                   rectX + iconPadding,
@@ -354,23 +365,30 @@ export default function AppView() {
                   iconSize,
                   iconSize,
                 );
+                ctx.restore();
               } else {
                 ctx.fillStyle = '#ffffff';
-                ctx.fillRect(
-                  rectX + iconPadding,
-                  rectY + iconPadding,
-                  iconSize,
-                  iconSize,
+                ctx.beginPath();
+                ctx.arc(
+                  rectX + iconPadding + iconSize / 2,
+                  rectY + iconPadding + iconSize / 2,
+                  iconSize / 2,
+                  0,
+                  2 * Math.PI,
                 );
+                ctx.fill();
               }
             } else {
               ctx.fillStyle = '#ffffff';
-              ctx.fillRect(
-                rectX + iconPadding,
-                rectY + iconPadding,
-                iconSize,
-                iconSize,
+              ctx.beginPath();
+              ctx.arc(
+                rectX + iconPadding + iconSize / 2,
+                rectY + iconPadding + iconSize / 2,
+                iconSize / 2,
+                0,
+                2 * Math.PI,
               );
+              ctx.fill();
             }
           } else {
             ctx.beginPath();
