@@ -175,25 +175,24 @@ export default function AppView() {
       setCurrentDepth(node.depth);
 
       let result: ExpansionResponse | null = null;
-      try {
-        // Refactor to tanstack
-        const response = await fetch("/api/subcategories", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ category: node.name }),
-        });
+      // Refactor to tanstack
+      const response = await fetch("/api/subcategories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: node.name }),
+      });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error("API error:", response.status, errorText);
-          setLoading(null);
-          return;
-        }
-
-        result = await response.json();
-      } catch {
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("API error:", response.status, errorText);
         toast("Slow Down!!! You've been rate limited")
+        setLoading(null);
+        nodeStatesRef.current[node.id] = 'idle';
+        return;
       }
+
+      result = await response.json();
+        
 
       if (result) {
         setData((prev) => {
@@ -318,11 +317,9 @@ export default function AppView() {
             ctx.fill();
           } else {
             const radius = 3;
-            const rectSize = radius * 2;  // = 12, so image fills the circle
+            const rectSize = radius * 2;
             const rectX = node.x - radius;
             const rectY = node.y - radius;
-            const iconPadding = Math.max(2, rectSize * 0.12);
-            const iconSize = rectSize - iconPadding * 2;
 
             ctx.beginPath();
             ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
@@ -336,7 +333,7 @@ export default function AppView() {
               ctx.arc(
                 rectX,
                 rectY,
-                iconSize,
+                radius,
                 0,
                 2 * Math.PI,
               );
