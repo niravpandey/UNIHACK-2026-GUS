@@ -247,10 +247,10 @@ export default function LandingPage() {
             transition={{ duration: 0.8 }}
           >
             <h1
-              className="text-6xl md:text-8xl font-bold mb-4 tracking-tight"
+              className="text-6xl font-barlow md:text-8xl font-bold mb-4"
               style={{ color: "oklch(0.80 0.05 66.97)" }}
             >
-              Graph surf
+              GRAPH SURF
             </h1>
           </motion.div>
 
@@ -258,10 +258,10 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="text-xl md:text-2xl mb-12 font-light"
+            className="text-xl md:text-2xl mb-12 font-light font-jet"
             style={{ color: "oklch(0.72 0.04 67.03)" }}
           >
-            A more fun way to browse the web
+            novel, graph-based web exploration
           </motion.p>
 
           {/* Scroll CTA */}
@@ -271,10 +271,10 @@ export default function LandingPage() {
             className="flex flex-col items-center gap-3"
           >
             <span
-              className="text-lg font-light"
+              className="text-lg font-light font-jet"
               style={{ color: "oklch(0.72 0.04 67.03 / 0.6)" }}
             >
-              Scroll to explore
+              Scroll
             </span>
 
             <motion.svg
