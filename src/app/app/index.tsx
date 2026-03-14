@@ -59,6 +59,7 @@ export default function AppView() {
   const [loading, setLoading] = useState<number | null>(null);
   const [errorNodes, setErrorNodes] = useState<number[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchError, setSearchError] = useState(false);
   const graphRef = useRef<any>(null);
   const nextId = useRef(INITIAL_NODES.length);
 
@@ -205,6 +206,7 @@ export default function AppView() {
     );
 
     if (foundNode) {
+      setSearchError(false);
       const nodeWithPosition = foundNode as Node & { x?: number; y?: number };
       if (
         nodeWithPosition.x !== undefined &&
@@ -219,6 +221,17 @@ export default function AppView() {
           (node: any) => node.id === foundNode.id,
         );
       }
+    } else {
+      setSearchError(true);
+      let count = 0;
+      const interval = setInterval(() => {
+        count++;
+        setSearchError((prev) => !prev);
+        if (count >= 6) {
+          clearInterval(interval);
+          setSearchError(false);
+        }
+      }, 200);
     }
   }, [searchQuery, data.nodes]);
 
@@ -243,6 +256,7 @@ export default function AppView() {
     }));
 
     setSearchQuery("");
+    setSearchError(false);
 
     setTimeout(() => {
       if (newNode.x !== undefined && newNode.y !== undefined) {
@@ -267,12 +281,20 @@ export default function AppView() {
 
   return (
     <div className={cn("min-h-screen w-full relative", styles.root)}>
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-full border border-border px-2 py-1.5 shadow-sm">
+      <div
+        className={cn(
+          "absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-full border border-border px-2 py-1.5 shadow-sm transition-colors",
+          searchError && "border-red-500 border-2",
+        )}
+      >
         <Input
           type="text"
           placeholder="Search nodes..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            setSearchError(false);
+          }}
           onKeyDown={handleKeyDown}
           className="border-0 bg-transparent focus-visible:ring-0 rounded-full w-48 h-8 text-sm"
         />
