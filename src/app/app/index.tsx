@@ -6,6 +6,8 @@ import { loadGraph, upsertGraph } from '@/features/graph/supabase-graph-service'
 import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { useSession } from '@/hooks/useSession';
+import styles from './app.module.css';
+import { cn } from '@/utils/tailwind';
 
 const HIGH_LEVEL_CATEGORIES = [
   'Computer Science',
@@ -41,6 +43,7 @@ export default function AppView() {
     links: []
   });
 
+  const [graphDataLoaded, setGraphDataLoaded]= useState<boolean>(false);
   const [loading, setLoading] = useState<number | null>(null);
   const graphRef = useRef<any>(null);
   const nextId = useRef(INITIAL_NODES.length);
@@ -59,10 +62,13 @@ export default function AppView() {
         // Sync nextId so new nodes don't collide with existing ones
         const maxId = Math.max(...graph.graph_data.nodes.map((n: Node) => n.id));
         nextId.current = maxId + 1;
+        setGraphDataLoaded(true);
       }
     }
       
-    loadData(); 
+    if (!graphDataLoaded) {
+      loadData(); 
+    }
   }, [user]);
 
   async function handleGraphSave() {
@@ -141,11 +147,11 @@ export default function AppView() {
     }
   }, [data.links, loading]);
 
-  const hasChildren = useCallback((nodeId: number): boolean => {
+  const hasChildren = (nodeId: number): boolean => {
     return data.links.some(
       (link) => (link.source as Node).id === nodeId || link.source === nodeId
     );
-  }, []);
+  };
 
   if (!user) {
     return;
@@ -154,13 +160,13 @@ export default function AppView() {
   console.log(user.id);
 
   return (
-    <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
+    <div className={cn("min-h-screen w-full", styles.root)}>
       <Button onClick={handleGraphSave}>Upload graph data</Button>
       <ForceGraph2D
         ref={graphRef}
         graphData={data}
         nodeAutoColorBy="group"
-        nodeLabel={(node: any) => node.name}
+        nodeLabel={""}
         onNodeClick={handleNodeClick}
         nodeCanvasObject={(node: any, ctx: any, globalScale: any) => {
           const label = node.name;
@@ -169,7 +175,7 @@ export default function AppView() {
           const textWidth = ctx.measureText(label).width;
           const bckgDimensions = [textWidth, fontSize].map(n => n + fontSize * 0.2);
 
-          const nodeColor = loading === node.id ? '#ffd700' : hasChildren(node.id) ?  "oklch(0.6941 0.1233 238.24)" : "#FF0000";
+          const nodeColor = loading === node.id ? '#ffd700' : hasChildren(node.id) ?  "oklch(0.6941 0.1233 238.24)" : "oklch(0.5412 0.0789 238.24)";
 
           ctx.beginPath();
           ctx.arc(node.x, node.y, 5 + node.group, 0, 2 * Math.PI);
