@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { GraphData, Link, Node } from '@/features/graph/types';
+import { GraphData, Link, Node, ResourceNode, TopicNode } from '@/features/graph/types';
 import { loadGraph, upsertGraph } from '@/features/graph/supabase-graph-service';
 import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ const INITIAL_NODES: Node[] = HIGH_LEVEL_CATEGORIES.map((name, idx) => ({
   name,
   group: 0,
   depth: 0,
+  type: "topic",
 }));
 
 const COLORS = [
@@ -33,6 +34,62 @@ const COLORS = [
 const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
   ssr: false,
 });
+
+type ExpansionResource = {
+  title: string;
+  url: string;
+  source?: ResourceNode['source'];
+  favicon?: string;
+  snippet?: string;
+};
+
+type ExpansionResponse = {
+  subcategories?: string[];
+  resources?: ExpansionResource[];
+};
+
+function getLinkNodeId(node: number | Node) {
+  return typeof node === 'number' ? node : node.id;
+}
+
+function isResourceNode(node: Node): node is ResourceNode {
+  return node.type === 'resource';
+}
+
+function normaliseNode(node: Partial<Node> & { id: number; name: string; group: number }): Node {
+  const depth = typeof node.depth === 'number' ? node.depth : node.group ?? 0;
+
+  if (node.type === 'resource' && typeof node.url === 'string') {
+    return {
+      id: node.id,
+      name: node.name,
+      group: node.group,
+      depth,
+      type: 'resource',
+      url: node.url,
+      source: node.source ?? 'web',
+      favicon: node.favicon,
+      snippet: node.snippet,
+    };
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    group: node.group,
+    depth,
+    type: 'topic',
+  };
+}
+
+function normaliseGraphData(graphData: GraphData): GraphData {
+  return {
+    nodes: graphData.nodes.map((node) =>
+      normaliseNode(node as Partial<Node> & { id: number; name: string; group: number }),
+    ),
+    links: graphData.links,
+  };
+}
 
 export default function AppView() {
   const { user } = useSession();
@@ -45,6 +102,7 @@ export default function AppView() {
   const [loading, setLoading] = useState<number | null>(null);
   const graphRef = useRef<any>(null);
   const nextId = useRef(INITIAL_NODES.length);
+  const imageCacheRef = useRef(new Map<string, HTMLImageElement | null>());
 
   // Load graph data
   useEffect(() => {
@@ -56,11 +114,12 @@ export default function AppView() {
     async function loadData() {
       const graph = await loadGraph(user!.id);
       if (graph && graph.graph_data) {
-        setData(graph.graph_data);
+        const normalisedGraph = normaliseGraphData(graph.graph_data);
+        setData(normalisedGraph);
         // Sync nextId so new nodes don't collide with existing ones
-        const maxId = Math.max(
-          ...graph.graph_data.nodes.map((n: Node) => n.id),
-        );
+        const maxId = normalisedGraph.nodes.length > 0
+          ? Math.max(...normalisedGraph.nodes.map((n: Node) => n.id))
+          : INITIAL_NODES.length - 1;
         nextId.current = maxId + 1;
       }
     }
@@ -70,12 +129,27 @@ export default function AppView() {
   async function handleGraphSave() {
     // Strip position information
     const sanitisedData = {
-      nodes: data.nodes.map(({ id, name, group, depth }) => ({
-        id,
-        name,
-        group,
-        depth,
-      })),
+      nodes: data.nodes.map((node) =>
+        node.type === 'resource'
+          ? {
+              id: node.id,
+              name: node.name,
+              group: node.group,
+              depth: node.depth,
+              type: node.type,
+              url: node.url,
+              source: node.source,
+              favicon: node.favicon,
+              snippet: node.snippet,
+            }
+          : {
+              id: node.id,
+              name: node.name,
+              group: node.group,
+              depth: node.depth,
+              type: node.type,
+            }
+      ),
       links: data.links.map((link) => ({
         source: (link.source as Node)?.id ?? link.source,
         target: (link.target as Node)?.id ?? link.target,
@@ -89,11 +163,15 @@ export default function AppView() {
 
   const handleNodeClick = useCallback(
     async (node: any) => {
+      if (node.type === 'resource') {
+        window.open(node.url, "_blank", "noopener,noreferrer");
+        return;
+      }
+
       if (loading !== null) return;
 
       const hasChildren = data.links.some(
-        (link) =>
-          (link.source as Node).id === node.id || link.source === node.id,
+        (link) => getLinkNodeId(link.source) === node.id,
       );
       if (hasChildren) {
         graphRef.current?.centerAt(node.x, node.y, 1000);
@@ -121,29 +199,75 @@ export default function AppView() {
           return;
         }
 
-        const result = await response.json();
-        if (result.subcategories && Array.isArray(result.subcategories)) {
-          const subcategories = result.subcategories.slice(0, 7);
+        const result: ExpansionResponse = await response.json();
 
-          setData((prev) => {
-            const newNodes: Node[] = subcategories.map((name: string) => ({
+        setData((prev) => {
+          const existingTopicNames = new Set(
+            prev.nodes
+              .filter((existingNode) => existingNode.type !== 'resource')
+              .map((existingNode) => existingNode.name.trim().toLowerCase()),
+          );
+          const existingResourceUrls = new Set(
+            prev.nodes
+              .filter(isResourceNode)
+              .map((existingNode) => existingNode.url),
+          );
+
+          const nextDepth = (typeof node.depth === 'number' ? node.depth : node.group ?? 0) + 1;
+          const nextGroup = node.group + 1;
+          const newTopicNodes: TopicNode[] = [];
+          const newResourceNodes: ResourceNode[] = [];
+
+          for (const name of Array.isArray(result.subcategories) ? result.subcategories.slice(0, 7) : []) {
+            const trimmedName = name.trim();
+            const topicKey = trimmedName.toLowerCase();
+
+            if (!trimmedName || existingTopicNames.has(topicKey)) {
+              continue;
+            }
+
+            existingTopicNames.add(topicKey);
+            newTopicNodes.push({
               id: nextId.current++,
-              name,
-              group: node.group + 1,
-              depth: node.depth + 1,
-            }));
+              name: trimmedName,
+              group: nextGroup,
+              depth: nextDepth,
+              type: 'topic',
+            });
+          }
 
-            const newLinks: Link[] = newNodes.map((newNode) => ({
-              source: node.id,
-              target: newNode.id,
-            }));
+          for (const resource of Array.isArray(result.resources) ? result.resources.slice(0, 5) : []) {
+            const url = resource.url?.trim();
 
-            return {
-              nodes: [...prev.nodes, ...newNodes],
-              links: [...prev.links, ...newLinks],
-            };
-          });
-        }
+            if (!url || existingResourceUrls.has(url)) {
+              continue;
+            }
+
+            existingResourceUrls.add(url);
+            newResourceNodes.push({
+              id: nextId.current++,
+              name: resource.title?.trim() || url,
+              group: nextGroup,
+              depth: nextDepth,
+              type: 'resource',
+              url,
+              source: resource.source ?? 'web',
+              favicon: resource.favicon?.trim() || undefined,
+              snippet: resource.snippet?.trim() || undefined,
+            });
+          }
+
+          const newNodes: Node[] = [...newTopicNodes, ...newResourceNodes];
+          const newLinks: Link[] = newNodes.map((newNode) => ({
+            source: node.id,
+            target: newNode.id,
+          }));
+
+          return {
+            nodes: [...prev.nodes, ...newNodes],
+            links: [...prev.links, ...newLinks],
+          };
+        });
       } catch (error) {
         console.error("Error generating subcategories:", error);
       } finally {
@@ -155,9 +279,9 @@ export default function AppView() {
 
   const hasChildren = useCallback((nodeId: number): boolean => {
     return data.links.some(
-      (link) => (link.source as Node).id === nodeId || link.source === nodeId
+      (link) => getLinkNodeId(link.source) === nodeId
     );
-  }, []);
+  }, [data.links]);
 
   if (!user) {
     return;
@@ -181,14 +305,81 @@ export default function AppView() {
           const textWidth = ctx.measureText(label).width;
           const bckgDimensions = [textWidth, fontSize].map(n => n + fontSize * 0.2);
 
-          const nodeColor = loading === node.id ? '#ffd700' : hasChildren(node.id) ?  "oklch(0.6941 0.1233 238.24)" : "#FF0000";
+          const isResource = node.type === 'resource';
+          const nodeColor = isResource
+            ? loading === node.id
+              ? '#ffd700'
+              : 'oklch(0.8228 0.1524 78.99)'
+            : loading === node.id
+              ? '#ffd700'
+              : hasChildren(node.id)
+                ? "oklch(0.6941 0.1233 238.24)"
+                : "#FF0000";
 
-          ctx.beginPath();
-          ctx.arc(node.x, node.y, 5 + node.group, 0, 2 * Math.PI);
-          ctx.fillStyle = nodeColor;
-          ctx.fill();
+          if (isResource) {
+            const rectSize = 12 + node.group * 2;
+            const rectX = node.x - rectSize / 2;
+            const rectY = node.y - rectSize / 2;
+            const radius = rectSize / 2;
+            const iconPadding = Math.max(4, rectSize * 0.2);
+            const iconSize = rectSize - iconPadding * 2;
 
-          const showLabel = node.group <= 1 || globalScale > 1.5;
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
+            ctx.fillStyle = nodeColor;
+            ctx.fill();
+
+            if (node.favicon) {
+              let cachedImage = imageCacheRef.current.get(node.favicon);
+
+              if (cachedImage === undefined) {
+                cachedImage = new Image();
+                cachedImage.crossOrigin = 'anonymous';
+                cachedImage.onload = () => graphRef.current?.refresh?.();
+                cachedImage.onerror = () => {
+                  imageCacheRef.current.set(node.favicon, null);
+                  graphRef.current?.refresh?.();
+                };
+                cachedImage.src = node.favicon;
+                imageCacheRef.current.set(node.favicon, cachedImage);
+              }
+
+              if (cachedImage && cachedImage.complete) {
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(
+                  cachedImage,
+                  rectX + iconPadding,
+                  rectY + iconPadding,
+                  iconSize,
+                  iconSize,
+                );
+              } else {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(
+                  rectX + iconPadding,
+                  rectY + iconPadding,
+                  iconSize,
+                  iconSize,
+                );
+              }
+            } else {
+              ctx.fillStyle = '#ffffff';
+              ctx.fillRect(
+                rectX + iconPadding,
+                rectY + iconPadding,
+                iconSize,
+                iconSize,
+              );
+            }
+          } else {
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, 5 + node.group, 0, 2 * Math.PI);
+            ctx.fillStyle = nodeColor;
+            ctx.fill();
+          }
+
+          const showLabel = node.type !== 'resource' && (node.group <= 1 || globalScale > 1.5);
 
           if (showLabel) {
             ctx.fillStyle = 'rgba(255, 255, 255, 0)';
@@ -208,6 +399,15 @@ export default function AppView() {
         }}
         nodePointerAreaPaint={(node: any, color: any, ctx: any) => {
           ctx.fillStyle = color;
+
+          if (node.type === 'resource') {
+            const rectSize = 12 + node.group * 2;
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, rectSize / 2, 0, 2 * Math.PI);
+            ctx.fill();
+            return;
+          }
+
           ctx.beginPath();
           ctx.arc(node.x, node.y, 5 + node.group, 0, 2 * Math.PI);
           ctx.fill();
