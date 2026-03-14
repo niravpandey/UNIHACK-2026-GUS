@@ -1,12 +1,15 @@
-import { EnvVarWarning } from '@/components/env-var-warning'
+import Link from 'next/link'
+import { Suspense } from 'react'
+
 import { AuthButton } from '@/components/auth-button'
+import { EnvVarWarning } from '@/components/env-var-warning'
 import { Hero } from '@/components/hero'
+import { GuestSessionPanel } from '@/components/guest-session-panel'
 import { ThemeSwitcher } from '@/components/theme-switcher'
 import { ConnectSupabaseSteps } from '@/components/tutorial/connect-supabase-steps'
 import { SignUpUserSteps } from '@/components/tutorial/sign-up-user-steps'
 import { hasEnvVars } from '@/utils/env'
-import Link from 'next/link'
-import { Suspense } from 'react'
+
 
 export default function Home() {
   return (
@@ -15,7 +18,7 @@ export default function Home() {
         <nav className="border-b-foreground/10 flex h-16 w-full justify-center border-b">
           <div className="flex w-full max-w-5xl items-center justify-between p-3 px-5 text-sm">
             <div className="flex items-center gap-5 font-semibold">
-              <Link href={'/'}>Next.js Supabase Starter</Link>
+              <Link href="/">Next.js Supabase Starter</Link>
             </div>
             {!hasEnvVars ? (
               <EnvVarWarning />
@@ -28,9 +31,12 @@ export default function Home() {
         </nav>
         <div className="flex max-w-5xl flex-1 flex-col gap-20 p-5">
           <Hero />
-          <main className="flex flex-1 flex-col gap-6 px-4">
-            <h2 className="mb-4 text-xl font-medium">Next steps</h2>
-            {hasEnvVars ? <SignUpUserSteps /> : <ConnectSupabaseSteps />}
+          <main className="flex flex-1 flex-col gap-10 px-4">
+            {hasEnvVars ? <GuestSessionPanel /> : <ConnectSupabaseSteps />}
+            <section className="flex flex-col gap-6">
+              <h2 className="text-xl font-medium">Next steps</h2>
+              {hasEnvVars ? <SignUpUserSteps /> : null}
+            </section>
           </main>
         </div>
 

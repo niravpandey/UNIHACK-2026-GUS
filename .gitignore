@@ -27,6 +27,7 @@ yarn-error.log*
 
 # local env files
 .env*.local
+.env
 
 # vercel
 .vercel
@@ -39,3 +40,4 @@ yarn-error.log*
 
 # swc
 .swc
+implemenmt.md
