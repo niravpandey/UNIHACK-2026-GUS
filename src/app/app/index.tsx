@@ -194,9 +194,9 @@ export default function AppView() {
           ctx.arc(node.x, node.y, 5 + node.group, 0, 2 * Math.PI);
           ctx.fill();
         }}
-        linkDirectionalArrowLength={3}
+        linkDirectionalArrowLength={0}
         linkDirectionalArrowRelPos={1}
-        linkColor={() => '#999999'}
+        linkColor={() => '#FF0000'}
       />
       {loading !== null && (
         <div style={{
