@@ -1,28 +1,61 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from 'react';
-import { GraphData, Link, Node, ResourceNode, TopicNode } from '@/features/graph/types';
-import { loadGraph, upsertGraph } from '@/features/graph/supabase-graph-service';
+import { useState, useRef, useCallback, useEffect } from "react";
+import {
+  GraphData,
+  Link,
+  Node,
+  ResourceNode,
+  TopicNode,
+} from "@/features/graph/types";
+import {
+  loadGraph,
+  upsertGraph,
+} from "@/features/graph/supabase-graph-service";
 
-import dynamic from 'next/dynamic';
-import { Button } from '@/components/ui/button';
-import { useSession } from '@/hooks/useSession';
-import styles from './app.module.css';
-import { cn } from '@/utils/tailwind';
+import dynamic from "next/dynamic";
+import { Button } from "@/components/ui/button";
+import { useSession } from "@/hooks/useSession";
+import styles from "./app.module.css";
+import { cn } from "@/utils/tailwind";
+import InterestSelection, {
+  InterestId,
+  hasUserSelectedInterests,
+  getUserInterests,
+} from "./InterestSelection";
 import { toast } from 'sonner';
 import MetricPanel from '@/features/graph/components/metric-panel';
 import Navbar from '@/components/navbar';
 
 const HIGH_LEVEL_CATEGORIES = [
-  'Computer Science',
-  'Cooking',
-  'Music',
-  'Sports',
-  'Mathematics',
-  'Art',
-  'Literature',
-  'Science',
+  "Computer Science",
+  "Cooking",
+  "Music",
+  "Sports",
+  "Mathematics",
+  "Art",
+  "Literature",
+  "Science",
 ];
+
+const INTEREST_LABELS: Record<InterestId, string> = {
+  programming: "Programming",
+  cooking: "Cooking",
+  music: "Music",
+  fitness: "Fitness",
+  mathematics: "Mathematics",
+  art: "Art",
+  literature: "Literature",
+  science: "Science",
+  gaming: "Gaming",
+  travel: "Travel",
+  health: "Health",
+  photography: "Photography",
+  nature: "Nature",
+  technology: "Technology",
+  movies: "Movies",
+  finance: "Finance",
+};
 
 const INITIAL_NODES: Node[] = HIGH_LEVEL_CATEGORIES.map((name, idx) => ({
   id: idx,
@@ -32,14 +65,14 @@ const INITIAL_NODES: Node[] = HIGH_LEVEL_CATEGORIES.map((name, idx) => ({
   type: "topic",
 }));
 
-const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
+const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ssr: false,
 });
 
 type ExpansionResource = {
   title: string;
   url: string;
-  source?: ResourceNode['source'];
+  source?: ResourceNode["source"];
   favicon?: string;
   snippet?: string;
 };
@@ -50,34 +83,57 @@ type ExpansionResponse = {
 };
 
 function getLinkNodeId(node: number | Node) {
-  return typeof node === 'number' ? node : node.id;
+  return typeof node === "number" ? node : node.id;
 }
 
 function isResourceNode(node: Node): node is ResourceNode {
-  return node.type === 'resource';
+  return node.type === "resource";
 }
 
 export default function AppView() {
   const { user } = useSession();
 
+  const [interestsSelected, setInterestsSelected] = useState(false);
+  const [selectedInterests, setSelectedInterests] = useState<InterestId[]>([]);
+
+  const getInitialNodes = (): Node[] => {
+    if (selectedInterests.length === 0) {
+      return HIGH_LEVEL_CATEGORIES.map((name, idx) => ({
+        id: idx,
+        name,
+        group: 0,
+        depth: 0,
+        type: "topic" as const,
+      }));
+    }
+    return selectedInterests.map((id, idx) => ({
+      id: idx,
+      name: INTEREST_LABELS[id],
+      group: 0,
+      depth: 0,
+      type: "topic" as const,
+    }));
+  };
+
   const [data, setData] = useState<GraphData>({
-    nodes: INITIAL_NODES,
-    links: []
+    nodes: getInitialNodes(),
+    links: [],
   });
 
   const [graphDataLoaded, setGraphDataLoaded] = useState<boolean>(false);
   const [currentDepth, setCurrentDepth] = useState<number>(0);
   const [loading, setLoading] = useState<number | null>(null);
   const graphRef = useRef<any>(null);
-  const nextId = useRef(INITIAL_NODES.length);
+  const focusedNodeRef = useRef<Node | null>(null);
+  const nextId = useRef(getInitialNodes().length);
   const imageCacheRef = useRef(new Map<string, HTMLImageElement | null>());
-  const nodeStatesRef = useRef<Record<number, 'idle' | 'loading'>>({});
+  const nodeStatesRef = useRef<Record<number, "idle" | "loading">>({});
 
   // Initialize node states for initial nodes
   useEffect(() => {
-    const initialStates: Record<number, 'idle' | 'loading'> = {};
-    INITIAL_NODES.forEach(node => {
-      initialStates[node.id] = 'idle';
+    const initialStates: Record<number, "idle" | "loading"> = {};
+    getInitialNodes().forEach((node) => {
+      initialStates[node.id] = "idle";
     });
     nodeStatesRef.current = initialStates;
   }, []);
@@ -95,16 +151,17 @@ export default function AppView() {
         setData(graph.graph_data);
 
         // Initialize node states for loaded nodes
-        const loadedStates: Record<number, 'idle' | 'loading'> = {};
-        graph.graph_data.nodes.forEach(node => {
-          loadedStates[node.id] = 'idle';
+        const loadedStates: Record<number, "idle" | "loading"> = {};
+        graph.graph_data.nodes.forEach((node) => {
+          loadedStates[node.id] = "idle";
         });
         nodeStatesRef.current = loadedStates;
 
         // Sync nextId so new nodes don't collide with existing ones
-        const maxId = data.nodes.length > 0
-          ? Math.max(...data.nodes.map((n: Node) => n.id))
-          : INITIAL_NODES.length - 1;
+        const maxId =
+          data.nodes.length > 0
+            ? Math.max(...data.nodes.map((n: Node) => n.id))
+            : getInitialNodes().length - 1;
         nextId.current = maxId + 1;
         setGraphDataLoaded(true);
       }
@@ -119,25 +176,25 @@ export default function AppView() {
     // Strip position information
     const sanitisedData = {
       nodes: data.nodes.map((node) =>
-        node.type === 'resource'
+        node.type === "resource"
           ? {
-            id: node.id,
-            name: node.name,
-            group: node.group,
-            depth: node.depth,
-            type: node.type,
-            url: node.url,
-            source: node.source,
-            favicon: node.favicon,
-            snippet: node.snippet,
-          }
+              id: node.id,
+              name: node.name,
+              group: node.group,
+              depth: node.depth,
+              type: node.type,
+              url: node.url,
+              source: node.source,
+              favicon: node.favicon,
+              snippet: node.snippet,
+            }
           : {
-            id: node.id,
-            name: node.name,
-            group: node.group,
-            depth: node.depth,
-            type: node.type,
-          }
+              id: node.id,
+              name: node.name,
+              group: node.group,
+              depth: node.depth,
+              type: node.type,
+            },
       ),
       links: data.links.map((link) => ({
         source: (link.source as Node)?.id ?? link.source,
@@ -146,13 +203,13 @@ export default function AppView() {
     };
 
     if (user) {
-      await upsertGraph(user.id, sanitisedData)
+      await upsertGraph(user.id, sanitisedData);
     }
   }
 
   const handleNodeClick = useCallback(
     async (node: any) => {
-      if (node.type === 'resource') {
+      if (node.type === "resource") {
         window.open(node.url, "_blank", "noopener,noreferrer");
         return;
       }
@@ -191,7 +248,7 @@ export default function AppView() {
         setData((prev) => {
           const existingTopicNames = new Set(
             prev.nodes
-              .filter((existingNode) => existingNode.type !== 'resource')
+              .filter((existingNode) => existingNode.type !== "resource")
               .map((existingNode) => existingNode.name.trim().toLowerCase()),
           );
           const existingResourceUrls = new Set(
@@ -200,12 +257,16 @@ export default function AppView() {
               .map((existingNode) => existingNode.url),
           );
 
-          const nextDepth = (typeof node.depth === 'number' ? node.depth : node.group ?? 0) + 1;
+          const nextDepth =
+            (typeof node.depth === "number" ? node.depth : (node.group ?? 0)) +
+            1;
           const nextGroup = node.group + 1;
           const newTopicNodes: TopicNode[] = [];
           const newResourceNodes: ResourceNode[] = [];
 
-          for (const name of Array.isArray(result.subcategories) ? result.subcategories.slice(0, 7) : []) {
+          for (const name of Array.isArray(result.subcategories)
+            ? result.subcategories.slice(0, 7)
+            : []) {
             const trimmedName = name.trim();
             const topicKey = trimmedName.toLowerCase();
 
@@ -219,11 +280,13 @@ export default function AppView() {
               name: trimmedName,
               group: nextGroup,
               depth: nextDepth,
-              type: 'topic',
+              type: "topic",
             });
           }
 
-          for (const resource of Array.isArray(result.resources) ? result.resources.slice(0, 5) : []) {
+          for (const resource of Array.isArray(result.resources)
+            ? result.resources.slice(0, 5)
+            : []) {
             const url = resource.url?.trim();
 
             if (!url || existingResourceUrls.has(url)) {
@@ -236,9 +299,9 @@ export default function AppView() {
               name: resource.title?.trim() || url,
               group: nextGroup,
               depth: nextDepth,
-              type: 'resource',
+              type: "resource",
               url,
-              source: resource.source ?? 'web',
+              source: resource.source ?? "web",
               favicon: resource.favicon?.trim() || undefined,
               snippet: resource.snippet?.trim() || undefined,
             });
@@ -262,13 +325,39 @@ export default function AppView() {
   );
 
   const hasChildren = (nodeId: number): boolean => {
-    return data.links.some(
-      (link) => getLinkNodeId(link.source) === nodeId
-    );
-  }
+    return data.links.some((link) => getLinkNodeId(link.source) === nodeId);
+  };
+
+  const handleInterestsSelected = (selected: InterestId[]) => {
+    setSelectedInterests(selected);
+    setInterestsSelected(true);
+    setData({
+      nodes: selected.map((id, idx) => ({
+        id: idx,
+        name: INTEREST_LABELS[id],
+        group: 0,
+        depth: 0,
+        type: "topic" as const,
+      })),
+      links: [],
+    });
+  };
 
   if (!user) {
     return;
+  }
+
+  const userHasInterests = hasUserSelectedInterests(user);
+  const existingInterests = getUserInterests(user);
+
+  if (!interestsSelected && !userHasInterests) {
+    return (
+      <InterestSelection user={user} onComplete={handleInterestsSelected} />
+    );
+  }
+
+  if (!interestsSelected && userHasInterests) {
+    handleInterestsSelected(existingInterests);
   }
 
   console.log(user.id);
@@ -291,7 +380,9 @@ export default function AppView() {
           const fontSize = 14 / globalScale;
           ctx.font = `${fontSize}px JetBrains Mono`;
           const textWidth = ctx.measureText(label).width;
-          const bckgDimensions = [textWidth, fontSize].map(n => n + fontSize * 0.2);
+          const bckgDimensions = [textWidth, fontSize].map(
+            (n) => n + fontSize * 0.2,
+          );
 
           const isResource = node.type === "resource";
 
@@ -321,7 +412,7 @@ export default function AppView() {
 
             if (!node.favicon) {
               // Create placeholder
-              ctx.fillStyle = '#ffffff';
+              ctx.fillStyle = "#ffffff";
               ctx.beginPath();
               ctx.arc(
                 rectX,
@@ -337,7 +428,7 @@ export default function AppView() {
 
               if (cachedImage === undefined) {
                 cachedImage = new Image();
-                cachedImage.crossOrigin = 'anonymous';
+                cachedImage.crossOrigin = "anonymous";
                 cachedImage.onload = () => graphRef.current?.refresh?.();
                 cachedImage.onerror = () => {
                   imageCacheRef.current.set(node.favicon, null);
@@ -362,23 +453,21 @@ export default function AppView() {
                     rectSize,
                     rectSize
                   );
-                } catch {
-                  ;;
-                }
+                } catch {}
 
                 ctx.restore();
               }
             }
           }
           // Render labels
-          const showLabel = node.type !== 'resource'
+          const showLabel = node.type !== "resource";
 
           if (showLabel) {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0)';
+            ctx.fillStyle = "rgba(255, 255, 255, 0)";
             ctx.fillRect(
               node.x - bckgDimensions[0] / 2,
               node.y - bckgDimensions[1] / 2 - 10,
-              ...bckgDimensions
+              ...bckgDimensions,
             );
 
             ctx.textAlign = 'center';
@@ -392,7 +481,7 @@ export default function AppView() {
         nodePointerAreaPaint={(node: any, color: any, ctx: any) => {
           ctx.fillStyle = color;
 
-          if (node.type === 'resource') {
+          if (node.type === "resource") {
             const rectSize = 12 + node.group * 2;
             ctx.beginPath();
             ctx.arc(node.x, node.y, rectSize / 2, 0, 2 * Math.PI);
@@ -404,11 +493,11 @@ export default function AppView() {
           ctx.arc(node.x, node.y, 5, 0, 2 * Math.PI);
           ctx.fill();
         }}
-        d3AlphaDecay={0.02}     // default 0.0228, lower = longer simulation
-        d3VelocityDecay={0.7}   // default 0.4, lower = nodes travel further
+        d3AlphaDecay={0.02} // default 0.0228, lower = longer simulation
+        d3VelocityDecay={0.7} // default 0.4, lower = nodes travel further
         linkDirectionalArrowLength={0}
         linkDirectionalArrowRelPos={1}
-        linkColor={() => 'oklch(0.7176 0.0691 57.72)'}
+        linkColor={() => "oklch(0.7176 0.0691 57.72)"}
       />
     </div>
   );
