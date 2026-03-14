@@ -12,11 +12,27 @@ interface Node {
   radius: number;
 }
 
+interface Bubble {
+  id: number;
+  x: number;
+  y: number;
+  size: number;
+}
+
 export default function LandingPage() {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
   const [scrollProgress, setScrollProgress] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isDarkening, setIsDarkening] = useState(false);
+  const [bubbles, setBubbles] = useState<Bubble[]>([]);
+
+  /*
+  =========================
+  Graph canvas animation
+  =========================
+  */
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -29,6 +45,7 @@ export default function LandingPage() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
     };
+
     resize();
     window.addEventListener("resize", resize);
 
@@ -53,9 +70,11 @@ export default function LandingPage() {
       mouseX = e.clientX;
       mouseY = e.clientY;
     };
+
     window.addEventListener("mousemove", handleMouseMove);
 
     let animationId: number;
+
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -69,6 +88,7 @@ export default function LandingPage() {
         const dx = mouseX - node.x;
         const dy = mouseY - node.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
+
         if (dist < 200) {
           node.x += dx * 0.01;
           node.y += dy * 0.01;
@@ -78,12 +98,14 @@ export default function LandingPage() {
       nodes.forEach((node, i) => {
         for (let j = i + 1; j < nodes.length; j++) {
           const other = nodes[j];
+
           const dx = other.x - node.x;
           const dy = other.y - node.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
 
           if (dist < connectionDistance) {
             const alpha = (1 - dist / connectionDistance) * 0.4;
+
             ctx.beginPath();
             ctx.strokeStyle = `oklch(0.53 0.16 254.20 / ${alpha})`;
             ctx.lineWidth = 1;
@@ -103,6 +125,7 @@ export default function LandingPage() {
 
       animationId = requestAnimationFrame(animate);
     };
+
     animate();
 
     return () => {
@@ -112,59 +135,116 @@ export default function LandingPage() {
     };
   }, []);
 
+  /*
+  =========================
+  Scroll progress
+  =========================
+  */
+
   useEffect(() => {
     let ticking = false;
     let targetProgress = 0;
 
     const handleScroll = () => {
-      targetProgress = Math.min(window.scrollY / (window.innerHeight * 1.5), 1);
+      targetProgress = Math.min(
+        window.scrollY / (window.innerHeight * 1.5),
+        1
+      );
 
       if (!ticking) {
         requestAnimationFrame(() => {
           setScrollProgress(targetProgress);
           ticking = false;
         });
+
         ticking = true;
       }
     };
 
     window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-    };
+
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  /*
+  =========================
+  Start transition
+  =========================
+  */
 
   useEffect(() => {
     if (scrollProgress >= 1 && !isTransitioning) {
       setIsTransitioning(true);
     }
-  }, [scrollProgress, isTransitioning]);
+  }, [scrollProgress]);
+
+  /*
+  =========================
+  Spawn bubbles
+  =========================
+  */
 
   useEffect(() => {
-    if (isTransitioning) {
-      const timer = setTimeout(() => {
-        router.push("/app");
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [isTransitioning, router]);
+    if (!isTransitioning) return;
+
+    let id = 0;
+
+    const spawn = () => {
+      setBubbles((prev) => [
+        ...prev,
+        {
+          id: id++,
+          x: Math.random() * window.innerWidth,
+          y: Math.random() * window.innerHeight,
+          size: 40 + Math.random() * 80,
+        },
+      ]);
+    };
+
+    const interval = setInterval(spawn, 50);
+
+    setTimeout(() => {
+      clearInterval(interval);
+      setIsDarkening(true);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isTransitioning]);
+
+  /*
+  =========================
+  Redirect
+  =========================
+  */
+
+  useEffect(() => {
+    if (!isDarkening) return;
+
+    const timer = setTimeout(() => {
+      router.push("/app");
+    }, 700);
+
+    return () => clearTimeout(timer);
+  }, [isDarkening, router]);
 
   return (
     <main
       className="h-[300vh] w-full relative"
       style={{ background: "oklch(0.23 0.07 254.08)" }}
     >
+      {/* Canvas */}
       <canvas
         ref={canvasRef}
         className="fixed top-0 left-0 w-full h-full pointer-events-auto"
       />
 
+      {/* Center content */}
       <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
         <div className="text-center px-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
+            transition={{ duration: 0.8 }}
           >
             <h1
               className="text-6xl md:text-8xl font-bold mb-4 tracking-tight"
@@ -177,17 +257,17 @@ export default function LandingPage() {
           <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
+            transition={{ delay: 0.2 }}
             className="text-xl md:text-2xl mb-12 font-light"
             style={{ color: "oklch(0.72 0.04 67.03)" }}
           >
             A more fun way to browse the web
           </motion.p>
 
+          {/* Scroll CTA */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.4, ease: "easeOut" }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: isTransitioning ? 0 : 1 }}
             className="flex flex-col items-center gap-3"
           >
             <span
@@ -196,6 +276,7 @@ export default function LandingPage() {
             >
               Scroll to explore
             </span>
+
             <motion.svg
               width="24"
               height="24"
@@ -203,13 +284,10 @@ export default function LandingPage() {
               fill="none"
               stroke="oklch(0.72 0.04 67.03 / 0.6)"
               strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
               animate={{ y: [0, 8, 0] }}
               transition={{
                 duration: 1.5,
                 repeat: Infinity,
-                ease: "easeInOut",
               }}
             >
               <path d="M12 5v14M5 12l7 7 7-7" />
@@ -218,20 +296,15 @@ export default function LandingPage() {
         </div>
       </div>
 
+      {/* Scroll indicator */}
       <motion.div
         className="fixed bottom-8 left-1/2 -translate-x-1/2 z-20"
-        initial={{ opacity: 0 }}
         animate={{ opacity: isTransitioning ? 0 : 1 }}
-        transition={{ delay: 1, duration: 0.3 }}
       >
         <div
-          className="w-6 h-10 rounded-full flex justify-center overflow-hidden transition-all duration-200 ease-out relative"
+          className="w-6 h-10 rounded-full flex justify-center overflow-hidden relative"
           style={{
-            border: `2px solid ${scrollProgress > 0 ? "oklch(0.53 0.16 254.20)" : "oklch(0.31 0.06 253.41)"}`,
-            boxShadow:
-              scrollProgress > 0
-                ? `0 0 20px oklch(0.53 0.16 254.20 / ${0.3 + scrollProgress * 0.7})`
-                : "none",
+            border: `2px solid oklch(0.53 0.16 254.20)`,
           }}
         >
           <div
@@ -239,38 +312,41 @@ export default function LandingPage() {
             style={{
               height: `${scrollProgress * 100}%`,
               background: "oklch(0.53 0.16 254.20)",
-              opacity: 0.8,
-            }}
-          />
-          <motion.div
-            className="w-1.5 h-1.5 rounded-full relative z-10"
-            style={{
-              background: "oklch(0.53 0.16 254.20)",
-              boxShadow:
-                scrollProgress > 0
-                  ? `0 0 10px oklch(0.53 0.16 254.20 / ${0.5 + scrollProgress * 0.5})`
-                  : "none",
-            }}
-            animate={{
-              y: scrollProgress > 0 ? 0 : [0, 12, 0],
-              opacity: scrollProgress > 0 ? 0 : 1,
-            }}
-            transition={{
-              y: { duration: 1.5, repeat: Infinity, ease: "easeInOut" },
             }}
           />
         </div>
       </motion.div>
 
+      {/* Bubble animation */}
       <AnimatePresence>
-        {isTransitioning && (
+        {isTransitioning &&
+          bubbles.map((bubble) => (
+            <motion.div
+              key={bubble.id}
+              initial={{ scale: 0 }}
+              animate={{ scale: 20 }}
+              transition={{ duration: 1.1 }}
+              className="fixed rounded-full z-40"
+              style={{
+                left: bubble.x,
+                top: bubble.y,
+                width: bubble.size,
+                height: bubble.size,
+                background: "#01438d",
+              }}
+            />
+          ))}
+      </AnimatePresence>
+
+      {/* Darkening */}
+      <AnimatePresence>
+        {isDarkening && (
           <motion.div
-            key="transition-overlay"
-            className="fixed inset-0 z-50 origin-center"
+            className="fixed inset-0 z-50"
             style={{ background: "oklch(0.23 0.07 254.08)" }}
-            initial={{ scale: 1, opacity: 0 }}
-            animate={{ scale: 20, opacity: 1 }}
-            transition={{ duration: 1.0, ease: "easeIn" }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6 }}
           />
         )}
       </AnimatePresence>
