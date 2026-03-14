@@ -24,6 +24,7 @@ const INITIAL_NODES: Node[] = HIGH_LEVEL_CATEGORIES.map((name, idx) => ({
   id: idx,
   name,
   group: 0,
+  depth: 0,
 }));
 
 const COLORS = [
@@ -60,7 +61,9 @@ export default function AppView() {
       if (graph && graph.graph_data) {
         setData(graph.graph_data);
         // Sync nextId so new nodes don't collide with existing ones
-        const maxId = Math.max(...graph.graph_data.nodes.map((n: Node) => n.id));
+        const maxId = Math.max(
+          ...graph.graph_data.nodes.map((n: Node) => n.id),
+        );
         nextId.current = maxId + 1;
         setGraphDataLoaded(true);
       }
@@ -74,7 +77,12 @@ export default function AppView() {
   async function handleGraphSave() {
     // Strip position information
     const sanitisedData = {
-      nodes: data.nodes.map(({ id, name, group }) => ({ id, name, group })),
+      nodes: data.nodes.map(({ id, name, group, depth }) => ({
+        id,
+        name,
+        group,
+        depth,
+      })),
       links: data.links.map((link) => ({
         source: (link.source as Node)?.id ?? link.source,
         target: (link.target as Node)?.id ?? link.target,
@@ -86,66 +94,71 @@ export default function AppView() {
     }
   }
 
-  const handleNodeClick = useCallback(async (node: any) => {
-    if (loading !== null) return;
+  const handleNodeClick = useCallback(
+    async (node: any) => {
+      if (loading !== null) return;
 
-    const hasChildren = data.links.some(
-      (link) => (link.source as Node).id === node.id || link.source === node.id
-    );
-    if (hasChildren) {
-      graphRef.current?.centerAt(node.x, node.y, 1000);
-      graphRef.current?.zoom(2, 1000);
-      return;
-    }
-
-    graphRef.current?.centerAt(node.x, node.y, 500);
-    graphRef.current?.zoom(1.5, 500);
-
-    setLoading(node.id);
-
-    try {
-      // Refactor to tanstack
-      const response = await fetch('/api/subcategories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category: node.name }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('API error:', response.status, errorText);
-        setLoading(null);
+      const hasChildren = data.links.some(
+        (link) =>
+          (link.source as Node).id === node.id || link.source === node.id,
+      );
+      if (hasChildren) {
+        graphRef.current?.centerAt(node.x, node.y, 1000);
+        graphRef.current?.zoom(2, 1000);
         return;
       }
 
-      const result = await response.json();
-      if (result.subcategories && Array.isArray(result.subcategories)) {
-        const subcategories = result.subcategories.slice(0, 7);
+      graphRef.current?.centerAt(node.x, node.y, 500);
+      graphRef.current?.zoom(1.5, 500);
 
-        setData((prev) => {
-          const newNodes: Node[] = subcategories.map((name: string) => ({
-            id: nextId.current++,
-            name,
-            group: node.group + 1,
-          }));
+      setLoading(node.id);
 
-          const newLinks: Link[] = newNodes.map((newNode) => ({
-            source: node.id,
-            target: newNode.id,
-          }));
-
-          return {
-            nodes: [...prev.nodes, ...newNodes],
-            links: [...prev.links, ...newLinks],
-          };
+      try {
+        // Refactor to tanstack
+        const response = await fetch("/api/subcategories", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ category: node.name }),
         });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("API error:", response.status, errorText);
+          setLoading(null);
+          return;
+        }
+
+        const result = await response.json();
+        if (result.subcategories && Array.isArray(result.subcategories)) {
+          const subcategories = result.subcategories.slice(0, 7);
+
+          setData((prev) => {
+            const newNodes: Node[] = subcategories.map((name: string) => ({
+              id: nextId.current++,
+              name,
+              group: node.group + 1,
+              depth: node.depth + 1,
+            }));
+
+            const newLinks: Link[] = newNodes.map((newNode) => ({
+              source: node.id,
+              target: newNode.id,
+            }));
+
+            return {
+              nodes: [...prev.nodes, ...newNodes],
+              links: [...prev.links, ...newLinks],
+            };
+          });
+        }
+      } catch (error) {
+        console.error("Error generating subcategories:", error);
+      } finally {
+        setLoading(null);
       }
-    } catch (error) {
-      console.error('Error generating subcategories:', error);
-    } finally {
-      setLoading(null);
-    }
-  }, [data.links, loading]);
+    },
+    [data.links, loading],
+  );
 
   const hasChildren = (nodeId: number): boolean => {
     return data.links.some(

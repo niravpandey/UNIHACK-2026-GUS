@@ -11,6 +11,7 @@ export type Node = {
   id: number;
   name: string;
   group: number;
+  depth: number;
 }
 
 export type Link = {
