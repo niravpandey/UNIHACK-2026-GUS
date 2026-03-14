@@ -333,16 +333,23 @@ export default function AppView() {
           ctx.font = `${fontSize}px Sans-Serif`;
           const textWidth = ctx.measureText(label).width;
           const bckgDimensions = [textWidth, fontSize].map(n => n + fontSize * 0.2);
+
           const isResource = node.type === "resource";
 
-          const nodeColor = isResource 
-            ? "oklch(0.7294 0.111 66.71)" 
-            : nodeStatesRef.current[node.id] === "loading" 
-            ? '#ffd700' : hasChildren(node.id) 
-            ? "oklch(0.6941 0.1233 238.24)" 
-            : "oklch(0.4176 0.0592 238.24)";
+          const nodeColor = isResource
+            ? "oklch(0.7294 0.111 66.71)"
+            : nodeStatesRef.current[node.id] === "loading"
+              ? '#ffd700' : hasChildren(node.id)
+                ? "oklch(0.6941 0.1233 238.24)"
+                : "oklch(0.4176 0.0592 238.24)";
 
-          if (isResource) {
+          if (!isResource) {
+            // Topic nodes
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = nodeColor;
+            ctx.fill();
+          } else {
             const rectSize = 12 + node.group * 2;
             const rectX = node.x - rectSize / 2;
             const rectY = node.y - rectSize / 2;
@@ -355,7 +362,20 @@ export default function AppView() {
             ctx.fillStyle = nodeColor;
             ctx.fill();
 
-            if (node.favicon) {
+            if (!node.favicon) {
+              // Create placeholder
+              ctx.fillStyle = '#ffffff';
+              ctx.beginPath();
+              ctx.arc(
+                rectX + iconPadding + iconSize / 2,
+                rectY + iconPadding + iconSize / 2,
+                iconSize / 2,
+                0,
+                2 * Math.PI,
+              );
+              ctx.fill();
+            } else {
+              // Favicon is present store in cache
               let cachedImage = imageCacheRef.current.get(node.favicon);
 
               if (cachedImage === undefined) {
@@ -387,49 +407,22 @@ export default function AppView() {
 
                 try {
                   ctx.drawImage(
-                  cachedImage,
-                  rectX + iconPadding,
-                  rectY + iconPadding,
-                  iconSize,
-                  iconSize,
+                    cachedImage,
+                    rectX + iconPadding,
+                    rectY + iconPadding,
+                    iconSize,
+                    iconSize,
                   );
-                 } catch {
+                } catch {
                   ;;
-                 }
-                
-                ctx.restore();
-              } else {
-                ctx.fillStyle = '#ffffff';
-                ctx.beginPath();
-                ctx.arc(
-                  rectX + iconPadding + iconSize / 2,
-                  rectY + iconPadding + iconSize / 2,
-                  iconSize / 2,
-                  0,
-                  2 * Math.PI,
-                );
-                ctx.fill();
-              }
-            } else {
-              ctx.fillStyle = '#ffffff';
-              ctx.beginPath();
-              ctx.arc(
-                rectX + iconPadding + iconSize / 2,
-                rectY + iconPadding + iconSize / 2,
-                iconSize / 2,
-                0,
-                2 * Math.PI,
-              );
-              ctx.fill();
-            }
-          } else {
-            ctx.beginPath();
-            ctx.arc(node.x, node.y, 5 + node.group, 0, 2 * Math.PI);
-            ctx.fillStyle = nodeColor;
-            ctx.fill();
-          }
+                }
 
-          const showLabel = node.type !== 'resource' && (node.group <= 1 || globalScale > 1.5);
+                ctx.restore();
+              }
+            }
+          }
+          // Render labels
+          const showLabel = node.type !== 'resource'
 
           if (showLabel) {
             ctx.fillStyle = 'rgba(255, 255, 255, 0)';
@@ -459,11 +452,11 @@ export default function AppView() {
           }
 
           ctx.beginPath();
-          ctx.arc(node.x, node.y, 2, 0, 2 * Math.PI);
+          ctx.arc(node.x, node.y, 5, 0, 2 * Math.PI);
           ctx.fill();
         }}
         d3AlphaDecay={0.02}     // default 0.0228, lower = longer simulation
-        d3VelocityDecay={0.2}   // default 0.4, lower = nodes travel further
+        d3VelocityDecay={0.7}   // default 0.4, lower = nodes travel further
         linkDirectionalArrowLength={0}
         linkDirectionalArrowRelPos={1}
         linkColor={() => 'oklch(0.7176 0.0691 57.72)'}
