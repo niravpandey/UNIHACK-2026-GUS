@@ -36,6 +36,7 @@ export default function AppView() {
     nodes: INITIAL_NODES,
     links: []
   });
+
   const [loading, setLoading] = useState<number | null>(null);
   const graphRef = useRef<any>(null);
   const nextId = useRef(INITIAL_NODES.length);
@@ -58,6 +59,7 @@ export default function AppView() {
     setLoading(node.id);
 
     try {
+      // Refactor to tanstack
       const response = await fetch('/api/subcategories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -72,7 +74,6 @@ export default function AppView() {
       }
 
       const result = await response.json();
-
       if (result.subcategories && Array.isArray(result.subcategories)) {
         const subcategories = result.subcategories.slice(0, 7);
 
@@ -93,10 +94,6 @@ export default function AppView() {
             links: [...prev.links, ...newLinks],
           };
         });
-
-        setTimeout(() => {
-          graphRef.current?.zoomToFit(400);
-        }, 100);
       }
     } catch (error) {
       console.error('Error generating subcategories:', error);
