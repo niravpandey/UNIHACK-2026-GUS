@@ -45,9 +45,21 @@ export default function AppView() {
   });
 
   const [graphDataLoaded, setGraphDataLoaded]= useState<boolean>(false);
+  const [currentDepth, setCurrentDepth] = useState<number>(0);
   const [loading, setLoading] = useState<number | null>(null);
   const graphRef = useRef<any>(null);
+  const focusedNodeRef = useRef<Node | null>(null);
   const nextId = useRef(INITIAL_NODES.length);
+  const nodeStatesRef = useRef<Record<number, 'idle' | 'loading'>>({});
+
+  // Initialize node states for initial nodes
+  useEffect(() => {
+    const initialStates: Record<number, 'idle' | 'loading'> = {};
+    INITIAL_NODES.forEach(node => {
+      initialStates[node.id] = 'idle';
+    });
+    nodeStatesRef.current = initialStates;
+  }, []);
 
   // Load graph data
   useEffect(() => {
@@ -60,6 +72,14 @@ export default function AppView() {
       const graph = await loadGraph(user!.id);
       if (graph && graph.graph_data) {
         setData(graph.graph_data);
+        
+        // Initialize node states for loaded nodes
+        const loadedStates: Record<number, 'idle' | 'loading'> = {};
+        graph.graph_data.nodes.forEach(node => {
+          loadedStates[node.id] = 'idle';
+        });
+        nodeStatesRef.current = loadedStates;
+        
         // Sync nextId so new nodes don't collide with existing ones
         const maxId = Math.max(
           ...graph.graph_data.nodes.map((n: Node) => n.id),
@@ -96,22 +116,18 @@ export default function AppView() {
 
   const handleNodeClick = useCallback(
     async (node: any) => {
-      if (loading !== null) return;
-
-      const hasChildren = data.links.some(
-        (link) =>
-          (link.source as Node).id === node.id || link.source === node.id,
-      );
-      if (hasChildren) {
+      if (hasChildren(node.id)) {
         graphRef.current?.centerAt(node.x, node.y, 1000);
-        graphRef.current?.zoom(2, 1000);
+        graphRef.current?.zoom(5, 4000);
         return;
       }
 
       graphRef.current?.centerAt(node.x, node.y, 500);
-      graphRef.current?.zoom(1.5, 500);
+      graphRef.current?.zoom(5, 4000);
 
       setLoading(node.id);
+      nodeStatesRef.current[node.id] = 'loading';
+      setCurrentDepth(node.depth);
 
       try {
         // Refactor to tanstack
@@ -145,6 +161,11 @@ export default function AppView() {
               target: newNode.id,
             }));
 
+            // Update node states for new nodes
+            newNodes.forEach(newNode => {
+              nodeStatesRef.current[newNode.id] = 'idle';
+            });
+
             return {
               nodes: [...prev.nodes, ...newNodes],
               links: [...prev.links, ...newLinks],
@@ -155,6 +176,7 @@ export default function AppView() {
         console.error("Error generating subcategories:", error);
       } finally {
         setLoading(null);
+        nodeStatesRef.current[node.id] = 'idle';
       }
     },
     [data.links, loading],
@@ -175,23 +197,25 @@ export default function AppView() {
   return (
     <div className={cn("min-h-screen w-full", styles.root)}>
       <Button onClick={handleGraphSave}>Upload graph data</Button>
+      <p>Current Depth: {currentDepth}</p>
       <ForceGraph2D
         ref={graphRef}
         graphData={data}
         nodeAutoColorBy="group"
         nodeLabel={""}
         onNodeClick={handleNodeClick}
+        width={window.innerWidth}
+        height={window.innerHeight}
         nodeCanvasObject={(node: any, ctx: any, globalScale: any) => {
           const label = node.name;
           const fontSize = 14 / globalScale;
           ctx.font = `${fontSize}px Sans-Serif`;
           const textWidth = ctx.measureText(label).width;
           const bckgDimensions = [textWidth, fontSize].map(n => n + fontSize * 0.2);
-
-          const nodeColor = loading === node.id ? '#ffd700' : hasChildren(node.id) ?  "oklch(0.6941 0.1233 238.24)" : "oklch(0.5412 0.0789 238.24)";
+          const nodeColor = nodeStatesRef.current[node.id] === "loading" ? '#ffd700' : hasChildren(node.id) ?  "oklch(0.6941 0.1233 238.24)" : "oklch(0.5412 0.0789 238.24)";
 
           ctx.beginPath();
-          ctx.arc(node.x, node.y, 5 + node.group, 0, 2 * Math.PI);
+          ctx.arc(node.x, node.y, 3 + node.group, 0, 2 * Math.PI);
           ctx.fillStyle = nodeColor;
           ctx.fill();
 
@@ -223,32 +247,6 @@ export default function AppView() {
         linkDirectionalArrowRelPos={1}
         linkColor={() => 'oklch(0.7176 0.0691 57.72)'}
       />
-      {loading !== null && (
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexDirection: 'column',
-          gap: '15px'
-        }}>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            border: '4px solid rgba(255,255,255,0.3)',
-            borderTop: '4px solid #fff',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite'
-          }} />
-          <span style={{ color: '#fff', fontSize: '16px' }}>Generating subcategories...</span>
-          <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-        </div>
-      )}
     </div>
   );
 }
