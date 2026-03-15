@@ -2,8 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import styles from "./app.module.css";
-import { Search, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useState, useRef, useCallback, useEffect } from "react";
 import {
   GraphData,
@@ -22,7 +21,6 @@ import { useSession } from "@/hooks/useSession";
 import { cn } from "@/utils/tailwind";
 import InterestSelection, {
   InterestId,
-  hasUserSelectedInterests,
   getUserInterests,
 } from "./InterestSelection";
 import { toast } from 'sonner';
