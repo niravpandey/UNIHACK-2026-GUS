@@ -170,7 +170,7 @@ async function fetchResources(category: string) {
 
 export async function POST(request: Request) {
   try {
-    const { category } = await request.json();
+    const { category, searchQuery } = await request.json();
 
     if (!category) {
       return NextResponse.json({ error: 'Category is required' }, { status: 400 });
@@ -201,7 +201,7 @@ export async function POST(request: Request) {
     let resources: ResourceResult[] = [];
 
     try {
-      resources = await fetchResources(category);
+      resources = await fetchResources(searchQuery || category);
     } catch (resourceError) {
       console.error('Error fetching Brave resources:', resourceError);
     }

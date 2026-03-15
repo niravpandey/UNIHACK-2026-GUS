@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import MetricPanel from '@/features/graph/components/metric-panel';
 import Navbar from '@/components/navbar';
 import { useSound } from "@/hooks/useSound";
+import { L } from "vitest/dist/chunks/reporters.nr4dxCkA.js";
 
 const HIGH_LEVEL_CATEGORIES = [
   "Computer Science",
@@ -246,12 +247,40 @@ export default function AppView() {
       setDeepestLevel(newDeepest);
       setNodesExplored(newExplored);
 
+      // Walk upward from the clicked node and keep only a small amount of context.
+      const SEARCH_DEPTH = 4;
+      const nodesById = new Map(data.nodes.map((n) => [n.id, n]));
+      const path: string[] = [node.name];
+      let currentId = node.id;
+
+      while (path.length < SEARCH_DEPTH) {
+        const parentLink = data.links.find(
+          (link) => getLinkNodeId(link.target) === currentId,
+        );
+
+        if (parentLink === undefined) {
+          break;
+        }
+
+        const parentId = getLinkNodeId(parentLink.source);
+        const parentNode = nodesById.get(parentId);
+
+        if (parentNode === undefined) {
+          break;
+        }
+
+        path.push(parentNode.name);
+        currentId = parentId;
+      }
+
+      const searchQuery = path.join(", ");
+
       let result: ExpansionResponse | null = null;
       // Refactor to tanstack
       const response = await fetch("/api/subcategories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category: node.name }),
+        body: JSON.stringify({ category: node.name, searchQuery, }),
       });
 
       if (!response.ok) {
@@ -352,7 +381,7 @@ export default function AppView() {
 
       nodeStatesRef.current[node.id] = 'idle';
     },
-    [data.links],
+    [data.links, data.nodes],
   );
 
   const hasChildren = (nodeId: number): boolean => {
