@@ -122,6 +122,7 @@ export function useSession() {
     session,
     user,
     isAnonymous: user?.is_anonymous === true,
+    onboardingCompleted: Array.isArray(user?.user_metadata?.interests) && user?.user_metadata?.interests.length > 0,
     authState,
     error,
     isLoading,

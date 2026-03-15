@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/utils/tailwind";
+import { useSound } from "@/hooks/useSound";
 
 const INTERESTS = [
   { id: "programming", label: "Programming", icon: Code2 },
@@ -69,6 +70,7 @@ export default function InterestSelection({
     new Set(getUserInterests(user)),
   );
   const [isSaving, setIsSaving] = useState(false);
+  const { playOnce: splash }= useSound("splash");
 
   const toggle = (id: InterestId) => {
     setSelected((prev) => {
@@ -103,6 +105,10 @@ export default function InterestSelection({
         "[LOG] Interest selection complete, saved to user metadata:",
         interests,
       );
+
+      setTimeout(() => {
+        splash();
+      }, 300);
       onComplete(interests);
     } catch (err) {
       console.error("Error saving interests:", err);

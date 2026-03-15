@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import { useSound } from "@/hooks/useSound";
+import { Button } from "@/components/ui/button";
+import { useSession } from "@/hooks/useSession";
 
 interface Node {
   x: number;
@@ -22,55 +25,12 @@ interface Bubble {
 export default function LandingPage() {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const { onboardingCompleted } = useSession();
 
-  const [scrollProgress, setScrollProgress] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isDarkening, setIsDarkening] = useState(false);
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
-
-  /*
-  =========================
-  Scroll progress
-  =========================
-  */
-
-  useEffect(() => {
-    let ticking = false;
-    let targetProgress = 0;
-
-    const handleScroll = () => {
-      targetProgress = Math.min(
-        window.scrollY / (window.innerHeight * 1.5),
-        1
-      );
-
-      if (!ticking) {
-        requestAnimationFrame(() => {
-          setScrollProgress(targetProgress);
-          ticking = false;
-        });
-
-        ticking = true;
-      }
-    };
-
-    window.addEventListener("scroll", handleScroll, { passive: true });
-
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  /*
-  =========================
-  Start transition
-  =========================
-  */
-
-  useEffect(() => {
-    if (scrollProgress >= 1 && !isTransitioning) {
-      setIsTransitioning(true);
-    }
-  }, [scrollProgress]);
-
+  const { playOnce: splash } = useSound("splash");
   /*
   =========================
   Spawn bubbles
@@ -131,7 +91,7 @@ export default function LandingPage() {
       />
 
       {/* Center content */}
-      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+      <div className="fixed inset-0 z-10 flex items-center justify-center">
         <div className="text-center px-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -153,59 +113,20 @@ export default function LandingPage() {
           >
             novel, graph-based web exploration
           </motion.p>
+          <Button primary="true" onClick={() => {
+            setIsTransitioning(true);
+            setTimeout(() => {
+              router.push("/app");
+            }, 700);
 
-          {/* Scroll CTA */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: isTransitioning ? 0 : 1 }}
-            className="flex flex-col items-center gap-3"
-          >
-            <span
-              className="text-lg font-light font-jet"
-              style={{ color: "oklch(0.72 0.04 67.03 / 0.6)" }}
-            >
-              Scroll
-            </span>
-
-            <motion.svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="oklch(0.72 0.04 67.03 / 0.6)"
-              strokeWidth="2"
-              animate={{ y: [0, 8, 0] }}
-              transition={{
-                duration: 1.5,
-                repeat: Infinity,
-              }}
-            >
-              <path d="M12 5v14M5 12l7 7 7-7" />
-            </motion.svg>
-          </motion.div>
+            if (onboardingCompleted) {
+              setTimeout(() => {
+                splash();
+              }, 1300);
+            }
+          }}>Take the Plunge</Button>
         </div>
       </div>
-
-      {/* Scroll indicator */}
-      <motion.div
-        className="fixed bottom-8 left-1/2 -translate-x-1/2 z-20"
-        animate={{ opacity: isTransitioning ? 0 : 1 }}
-      >
-        <div
-          className="w-6 h-10 rounded-full flex justify-center overflow-hidden relative"
-          style={{
-            border: `2px solid oklch(0.53 0.16 254.20)`,
-          }}
-        >
-          <div
-            className="absolute bottom-0 left-0 right-0"
-            style={{
-              height: `${scrollProgress * 100}%`,
-              background: "oklch(0.53 0.16 254.20)",
-            }}
-          />
-        </div>
-      </motion.div>
 
       {/* Bubble animation */}
       <AnimatePresence>

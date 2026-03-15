@@ -15,7 +15,6 @@ import {
 
 import dynamic from "next/dynamic";
 import { useSession } from "@/hooks/useSession";
-import styles from "./app.module.css";
 import { cn } from "@/utils/tailwind";
 import InterestSelection, {
   InterestId,
@@ -25,6 +24,7 @@ import InterestSelection, {
 import { toast } from 'sonner';
 import MetricPanel from '@/features/graph/components/metric-panel';
 import Navbar from '@/components/navbar';
+import { useSound } from "@/hooks/useSound";
 
 const HIGH_LEVEL_CATEGORIES = [
   "Computer Science",
@@ -82,9 +82,10 @@ function isResourceNode(node: Node): node is ResourceNode {
 }
 
 export default function AppView() {
-  const { user } = useSession();
-  const fanRef = useRef<HTMLAudioElement | null>(null);
-  const clickRef = useRef<HTMLAudioElement | null>(null);
+  const { user, onboardingCompleted } = useSession();
+
+  const { playOnce: click } = useSound("click");
+  const { playOnce: fan } = useSound("fan");
 
   const [interestsSelected, setInterestsSelected] = useState(false);
   const [selectedInterests, setSelectedInterests] = useState<InterestId[]>([]);
@@ -121,11 +122,7 @@ export default function AppView() {
   const nextId = useRef(getInitialNodes().length);
   const imageCacheRef = useRef(new Map<string, HTMLImageElement | null>());
   const nodeStatesRef = useRef<Record<number, "idle" | "loading">>({});
-
-  useEffect(() => {
-    fanRef.current = new Audio("/audio/fan.wav");
-    clickRef.current = new Audio("/audio/click.wav");
-  }, []);
+  const hoveredNodeRef = useRef<Node | null>(null);
 
   // Initialize node states for initial nodes
   useEffect(() => {
@@ -212,7 +209,7 @@ export default function AppView() {
         return;
       }
 
-      clickRef.current?.play();
+      click();
 
       // Don't explore any nodes that have children i.e have already been explored
       if (hasChildren(node.id)) {
@@ -314,8 +311,9 @@ export default function AppView() {
             source: node.id,
             target: newNode.id,
           }));
-          
-          fanRef.current?.play();
+
+          fan();
+
           return {
             nodes: [...prev.nodes, ...newNodes],
             links: [...prev.links, ...newLinks],
@@ -340,7 +338,7 @@ export default function AppView() {
         name: INTEREST_LABELS[id],
         group: 0,
         depth: 0,
-        type: "topic" as const,
+        type: "top-level" as const,
       })),
       links: [],
     });
@@ -350,16 +348,16 @@ export default function AppView() {
     return;
   }
 
-  const userHasInterests = hasUserSelectedInterests(user);
+  console.log("ONAORDING COMPLETED ", onboardingCompleted);
   const existingInterests = getUserInterests(user);
 
-  if (!interestsSelected && !userHasInterests) {
+  if (!interestsSelected && !onboardingCompleted) {
     return (
       <InterestSelection user={user} onComplete={handleInterestsSelected} />
     );
   }
 
-  if (!interestsSelected && userHasInterests) {
+  if (!interestsSelected && onboardingCompleted) {
     handleInterestsSelected(existingInterests);
   }
 
@@ -369,7 +367,7 @@ export default function AppView() {
     <div className={cn("min-h-screen w-full flex flex-col background-pattern")}>
       <div className="fixed top-0 left-0">
         <Navbar />
-        <MetricPanel depthLevel={currentDepth} nodesExplored={nodesExplored}/>
+        <MetricPanel depthLevel={currentDepth} nodesExplored={nodesExplored} />
       </div>
 
       <ForceGraph2D
@@ -380,6 +378,16 @@ export default function AppView() {
         onNodeClick={handleNodeClick}
         width={window.innerWidth}
         height={window.innerHeight}
+        onNodeHover={(node) => {
+          if (!node) {
+            hoveredNodeRef.current = null;
+            return;
+          }
+
+          if ((node as Node).type !== "resource") {
+            hoveredNodeRef.current = node as Node;
+          }
+        }}
         nodeCanvasObject={(node: any, ctx: any, globalScale: any) => {
           const label = node.name;
           const fontSize = 14 / globalScale;
@@ -392,17 +400,20 @@ export default function AppView() {
           console.log(node.type)
           const isResource = node.type === "resource";
           const isTopLevel = node.type === "top-level";
-
+          const isLoading = nodeStatesRef.current[node.id] === "loading";
+          const isHovered = hoveredNodeRef.current?.id === node.id;
 
           // Colour nodes based on states or type
-
-          const nodeColor = isResource
-            ? "oklch(0.7294 0.111 66.71)"
-            : isTopLevel ? "oklch(0.6971 0.1455 66.71)"
-              : nodeStatesRef.current[node.id] === "loading"
-                ? 'oklch(0.6765 0.0715 57.72)' : hasChildren(node.id)
-                  ? "oklch(0.6941 0.1233 238.24)"
-                  : "oklch(0.4176 0.0592 238.24)";
+          const nodeColor =
+            (isHovered && !isLoading) ?
+              "oklch(0.6941 0.1233 238.24)"
+              : isResource
+                ? "oklch(0.7294 0.111 66.71)"
+                : isTopLevel ? "oklch(0.6735 0.0888 66.71)"
+                  : nodeStatesRef.current[node.id] === "loading"
+                    ? 'oklch(0.6765 0.0715 57.72)' : hasChildren(node.id)
+                      ? "oklch(0.6941 0.1233 238.24)"
+                      : "oklch(0.4176 0.0592 238.24)";
 
           if (!isResource) {
             // Topic nodes
