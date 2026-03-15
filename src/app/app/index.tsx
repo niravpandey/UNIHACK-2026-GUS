@@ -25,7 +25,6 @@ import { toast } from 'sonner';
 import MetricPanel from '@/features/graph/components/metric-panel';
 import Navbar from '@/components/navbar';
 import { useSound } from "@/hooks/useSound";
-import { L } from "vitest/dist/chunks/reporters.nr4dxCkA.js";
 
 const HIGH_LEVEL_CATEGORIES = [
   "Computer Science",
@@ -80,6 +79,19 @@ function getLinkNodeId(node: number | Node) {
 
 function isResourceNode(node: Node): node is ResourceNode {
   return node.type === "resource";
+}
+
+function sanitizeGraphData(graphData: GraphData): GraphData {
+  const nodeIds = new Set(graphData.nodes.map((node) => node.id));
+
+  return {
+    nodes: graphData.nodes,
+    links: graphData.links.filter((link) => {
+      const sourceId = getLinkNodeId(link.source);
+      const targetId = getLinkNodeId(link.target);
+      return nodeIds.has(sourceId) && nodeIds.has(targetId);
+    }),
+  };
 }
 
 export default function AppView() {
@@ -145,22 +157,24 @@ export default function AppView() {
     async function loadData() {
       const graph = await loadGraph(user!.id);
       if (graph) {
-        setData(graph.graph_data);
+        const safeGraphData = sanitizeGraphData(graph.graph_data);
+
+        setData(safeGraphData);
         setCurrentDepth(graph.current_depth);
         setNodesExplored(graph.nodes_explored);
         setDeepestLevel(graph.deepest_level);
 
         // Initialize node states for loaded nodes
         const loadedStates: Record<number, "idle" | "loading"> = {};
-        graph.graph_data.nodes.forEach((node) => {
+        safeGraphData.nodes.forEach((node) => {
           loadedStates[node.id] = "idle";
         });
         nodeStatesRef.current = loadedStates;
 
         // Sync nextId so new nodes don't collide with existing ones
         const maxId =
-          data.nodes.length > 0
-            ? Math.max(...data.nodes.map((n: Node) => n.id))
+          safeGraphData.nodes.length > 0
+            ? Math.max(...safeGraphData.nodes.map((n: Node) => n.id))
             : getInitialNodes().length - 1;
         nextId.current = maxId + 1;
         setGraphDataLoaded(true);
@@ -176,9 +190,11 @@ export default function AppView() {
     graphData: GraphData,
     sessionInfo: { currentDepth: number; nodesExplored: number; deepestLevel: number }
   ) {
+    const safeGraphData = sanitizeGraphData(graphData);
+
     // Strip position information
     const sanitisedData = {
-      nodes: graphData.nodes.map((node) =>
+      nodes: safeGraphData.nodes.map((node) =>
         node.type === "resource"
           ? {
             id: node.id,
@@ -199,7 +215,7 @@ export default function AppView() {
             type: node.type,
           },
       ),
-      links: graphData.links.map((link) => ({
+      links: safeGraphData.links.map((link) => ({
         source: (link.source as Node)?.id ?? link.source,
         target: (link.target as Node)?.id ?? link.target,
       })),
@@ -251,7 +267,9 @@ export default function AppView() {
       const SEARCH_DEPTH = 4;
       const nodesById = new Map(data.nodes.map((n) => [n.id, n]));
       const path: string[] = [node.name];
+      const ancestorPath: string[] = [];
       let currentId = node.id;
+      let immediateParentId: number | undefined;
 
       while (path.length < SEARCH_DEPTH) {
         const parentLink = data.links.find(
@@ -269,18 +287,69 @@ export default function AppView() {
           break;
         }
 
+        if (immediateParentId === undefined) {
+          immediateParentId = parentId;
+        }
+
+        ancestorPath.push(parentNode.name);
         path.push(parentNode.name);
         currentId = parentId;
       }
 
       const searchQuery = path.join(", ");
+      const orderedAncestorPath = [...ancestorPath].reverse();
+      const rootTopic = orderedAncestorPath[0] ?? node.name;
+      const siblingTopics =
+        immediateParentId === undefined
+          ? []
+          : data.links
+              .filter((link) => getLinkNodeId(link.source) === immediateParentId)
+              .map((link) => nodesById.get(getLinkNodeId(link.target)))
+              .filter(
+                (linkedNode): linkedNode is Node =>
+                  linkedNode !== undefined &&
+                  linkedNode.id !== node.id &&
+                  linkedNode.type !== "resource",
+              )
+              .map((linkedNode) => linkedNode.name.trim())
+              .filter(
+                (name, index, values) =>
+                  Boolean(name) &&
+                  values.findIndex(
+                    (value) => value.toLowerCase() === name.toLowerCase(),
+                  ) === index,
+              );
+      const existingTopicNames = data.nodes
+        .filter(
+          (existingNode) =>
+            existingNode.id !== node.id && existingNode.type !== "resource",
+        )
+        .map((existingNode) => existingNode.name.trim())
+        .filter(
+          (name, index, values) =>
+            Boolean(name) &&
+            values.findIndex(
+              (value) => value.toLowerCase() === name.toLowerCase(),
+            ) === index,
+        )
+        .slice(-80);
 
       let result: ExpansionResponse | null = null;
       // Refactor to tanstack
       const response = await fetch("/api/subcategories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category: node.name, searchQuery, }),
+        body: JSON.stringify({
+          category: node.name,
+          searchQuery,
+          llmContext: {
+            currentDepth: node.depth,
+            ancestorPath: orderedAncestorPath,
+            rootTopic,
+            siblingTopics,
+            existingTopicNames,
+          },
+        }),
       });
 
       if (!response.ok) {
@@ -364,18 +433,17 @@ export default function AppView() {
 
           fan();
           
-          handleGraphSave({
+          const nextGraphData = sanitizeGraphData({
             nodes: [...prev.nodes, ...newNodes],
             links: [...prev.links, ...newLinks],
-          }, {
+          });
+
+          handleGraphSave(nextGraphData, {
             currentDepth: newDepth,
             nodesExplored: newExplored,
             deepestLevel: newDeepest
           });
-          return {
-            nodes: [...prev.nodes, ...newNodes],
-            links: [...prev.links, ...newLinks],
-          };
+          return nextGraphData;
         });
       }
 
