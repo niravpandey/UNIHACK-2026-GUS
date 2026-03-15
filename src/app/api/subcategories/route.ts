@@ -226,9 +226,10 @@ export async function POST(request: Request) {
       'Each result should be a direct child of the current topic.',
       'Avoid duplicates and near-duplicates of ancestor topics, sibling topics, and existing graph topics.',
       'Do not repeat the current topic in different wording.',
-      'Wording must not be long and overly verbose.',
+      'Keep you subtopics under 6 words or 50 characters',
       'Return only a JSON array of strings, nothing else.',
     ];
+    
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
