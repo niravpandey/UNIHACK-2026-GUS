@@ -254,16 +254,7 @@ export default function AppView() {
 
       click();
 
-      // Don't explore any nodes that have children i.e have already been explored
-      if (hasChildren(node.id)) {
-        graphRef.current?.centerAt(node.x, node.y, 1000);
-        // maybe play a diff sound
-        return;
-      }
-
       graphRef.current?.centerAt(node.x, node.y, 500);
-
-      nodeStatesRef.current[node.id] = "loading";
 
       const newDepth = node.depth;
       let newDeepest = deepestLevel;
@@ -277,7 +268,16 @@ export default function AppView() {
       setDeepestLevel(newDeepest);
       setNodesExplored(newExplored);
 
-      // Walk upward from the clicked node and keep only a small amount of context.
+      // Walk upward from the clicked node and
+
+      // Don't explore any nodes that have children i.e have already been explored
+      if (hasChildren(node.id)) {
+        // maybe play a diff sound
+        return;
+      }
+
+      nodeStatesRef.current[node.id] = "loading";
+      // Context
       const SEARCH_DEPTH = 4;
       const nodesById = new Map(data.nodes.map((n) => [n.id, n]));
       const path: string[] = [node.name];
@@ -317,22 +317,22 @@ export default function AppView() {
         immediateParentId === undefined
           ? []
           : data.links
-              .filter((link) => getLinkNodeId(link.source) === immediateParentId)
-              .map((link) => nodesById.get(getLinkNodeId(link.target)))
-              .filter(
-                (linkedNode): linkedNode is Node =>
-                  linkedNode !== undefined &&
-                  linkedNode.id !== node.id &&
-                  linkedNode.type !== "resource",
-              )
-              .map((linkedNode) => linkedNode.name.trim())
-              .filter(
-                (name, index, values) =>
-                  Boolean(name) &&
-                  values.findIndex(
-                    (value) => value.toLowerCase() === name.toLowerCase(),
-                  ) === index,
-              );
+            .filter((link) => getLinkNodeId(link.source) === immediateParentId)
+            .map((link) => nodesById.get(getLinkNodeId(link.target)))
+            .filter(
+              (linkedNode): linkedNode is Node =>
+                linkedNode !== undefined &&
+                linkedNode.id !== node.id &&
+                linkedNode.type !== "resource",
+            )
+            .map((linkedNode) => linkedNode.name.trim())
+            .filter(
+              (name, index, values) =>
+                Boolean(name) &&
+                values.findIndex(
+                  (value) => value.toLowerCase() === name.toLowerCase(),
+                ) === index,
+            );
       const existingTopicNames = data.nodes
         .filter(
           (existingNode) =>
@@ -465,7 +465,18 @@ export default function AppView() {
         });
       }
 
-      nodeStatesRef.current[node.id] = "idle";
+      // Wait for the simulation to move nodes, then re-fetch the live position
+      setTimeout(() => {
+        const liveNode = graphRef.current ? 
+          graphRef.current.node.find((n: any) => n.id === node.id) : 
+          data.nodes.find((n: any) => n.id === node.id);
+
+        if (liveNode?.x !== undefined && liveNode?.y !== undefined) {
+          graphRef.current?.centerAt(liveNode.x, liveNode.y, 500);
+        }
+
+        nodeStatesRef.current[node.id] = "idle";
+      }, 600); // ~600ms gives the simulation time to push nodes apart
     },
     [data.links, data.nodes],
   );
@@ -736,11 +747,11 @@ export default function AppView() {
           if (showLabel) {
             let labelContent = label;
             if (node.type === "resource") {
-                // Truncate label
-                labelContent = label.substring(0, 20)
-                if (label.length > 21) {
-                  labelContent += "...";
-                }
+              // Truncate label
+              labelContent = label.substring(0, 20)
+              if (label.length > 21) {
+                labelContent += "...";
+              }
             }
 
             ctx.fillStyle = "rgba(255, 255, 255, 0)";
