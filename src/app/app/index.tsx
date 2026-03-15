@@ -1,17 +1,8 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
-import { GraphData, Link, Node, ResourceNode, TopicNode } from "@/features/graph/types";
-import {
-  loadGraph,
-  upsertGraph,
-} from "@/features/graph/supabase-graph-service";
-import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useSession } from "@/hooks/useSession";
 import styles from "./app.module.css";
-import { cn } from "@/utils/tailwind";
 import { Search, Plus } from "lucide-react";
 import { useState, useRef, useCallback, useEffect } from "react";
 import {
@@ -104,7 +95,6 @@ function isResourceNode(node: Node): node is ResourceNode {
 
 export default function AppView() {
   const { user, onboardingCompleted } = useSession();
-
   const { playOnce: click } = useSound("click");
   const { playOnce: fan } = useSound("fan");
 
@@ -140,7 +130,6 @@ export default function AppView() {
   const [nodesExplored, setNodesExplored] = useState<number>(0);
   const [deepestLevel, setDeepestLevel] = useState<number>(0);
 
-  const [errorNodes, setErrorNodes] = useState<number[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchError, setSearchError] = useState(false);
   const graphRef = useRef<any>(null);
@@ -379,12 +368,6 @@ export default function AppView() {
     [data.links],
   );
 
-  const hasChildren = (nodeId: number): boolean => {
-    return data.links.some(
-      (link) => (link.source as Node).id === nodeId || link.source === nodeId,
-    );
-  };
-
   const handleSearch = useCallback(() => {
     if (!searchQuery.trim()) return;
 
@@ -460,6 +443,8 @@ export default function AppView() {
       handleSearch();
     }
   };
+
+  function hasChildren(nodeId: number) {
     return data.links.some((link) => getLinkNodeId(link.source) === nodeId);
   };
 
@@ -493,7 +478,6 @@ export default function AppView() {
   if (!interestsSelected && onboardingCompleted) {
     handleInterestsSelected(existingInterests);
   }
-
 
   return (
     <div className={cn("min-h-screen w-full relative flex flex-col background-pattern")}>
