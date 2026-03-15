@@ -535,7 +535,7 @@ export default function AppView() {
         nodeCanvasObject={(node: any, ctx: any, globalScale: any) => {
           const label = node.name;
           const fontSize = 14 / globalScale;
-          ctx.font = `${fontSize}px JetBrains Mono`;
+          ctx.font = `${fontSize}px Cascadia Mono`;
           const textWidth = ctx.measureText(label).width;
           const bckgDimensions = [textWidth, fontSize].map(
             (n) => n + fontSize * 0.2,
