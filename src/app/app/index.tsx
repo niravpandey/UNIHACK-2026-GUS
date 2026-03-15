@@ -481,13 +481,13 @@ export default function AppView() {
     <div className={cn("min-h-screen w-full relative flex flex-col background-pattern")}>
       <div
         className={cn(
-          "absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-full border border-border px-2 py-1.5 shadow-sm transition-colors",
+          "absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-background/80 backdrop-blur-sm border border-border px-2 py-1.5 shadow-sm transition-colors",
           searchError && "border-red-500 border-2",
         )}
       >
         <Input
           type="text"
-          placeholder="Search or add nodes..."
+          placeholder="Search or add nodes"
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
@@ -499,7 +499,7 @@ export default function AppView() {
         <Button
           variant="ghost"
           size="icon"
-          className="rounded-full h-8 w-8"
+          className="h-8 w-8"
           onClick={handleAddNode}
         >
           <Plus className="h-4 w-4" />
@@ -535,7 +535,7 @@ export default function AppView() {
         nodeCanvasObject={(node: any, ctx: any, globalScale: any) => {
           const label = node.name;
           const fontSize = 14 / globalScale;
-          ctx.font = `${fontSize}px Cascadia Mono`;
+          ctx.font = `${fontSize}px JetBrains Mono`;
           const textWidth = ctx.measureText(label).width;
           const bckgDimensions = [textWidth, fontSize].map(
             (n) => n + fontSize * 0.2,
@@ -629,9 +629,18 @@ export default function AppView() {
             }
           }
           // Render labels
-          const showLabel = node.type !== "resource" && globalScale >= 2.5;
+          const showLabel = globalScale >= 2.5;
 
           if (showLabel) {
+            let labelContent = label;
+            if (node.type === "resource") {
+                // Truncate label
+                labelContent = label.substring(0, 20)
+                if (label.length > 21) {
+                  labelContent += "...";
+                }
+            }
+
             ctx.fillStyle = "rgba(255, 255, 255, 0)";
             ctx.fillStyle = "rgba(255, 255, 255, 0)";
             ctx.fillRect(
@@ -644,7 +653,7 @@ export default function AppView() {
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillStyle = 'oklch(0.7735 0.0962 57.72)';
-            ctx.fillText(label, node.x, node.y - 5);
+            ctx.fillText(labelContent, node.x, node.y - 5);
           }
 
           node.__bckgDimensions = bckgDimensions;
