@@ -467,16 +467,13 @@ export default function AppView() {
 
       // Wait for the simulation to move nodes, then re-fetch the live position
       setTimeout(() => {
-        const liveNode = graphRef.current ? 
-          graphRef.current.node.find((n: any) => n.id === node.id) : 
-          data.nodes.find((n: any) => n.id === node.id);
+        const liveNode = graphRef.current.d3Force('simulation')?.nodes().find((n: any) => n.id === node.id);
 
         if (liveNode?.x !== undefined && liveNode?.y !== undefined) {
           graphRef.current?.centerAt(liveNode.x, liveNode.y, 500);
         }
-
-        nodeStatesRef.current[node.id] = "idle";
       }, 600); // ~600ms gives the simulation time to push nodes apart
+      nodeStatesRef.current[node.id] = "idle";
     },
     [data.links, data.nodes],
   );
