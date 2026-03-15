@@ -82,7 +82,7 @@ export default function LandingPage() {
 
   return (
     <main
-      className="h-[300vh] w-full relative background-pattern bg-background"
+      className="h-[100vh] w-full relative background-pattern bg-background"
     >
       {/* Canvas */}
       <canvas
@@ -113,7 +113,8 @@ export default function LandingPage() {
           >
             novel, graph-based web exploration
           </motion.p>
-          <Button primary="true" onClick={() => {
+          
+          <Button onClick={() => {
             setIsTransitioning(true);
             setTimeout(() => {
               router.push("/app");
