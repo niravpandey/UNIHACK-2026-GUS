@@ -13,6 +13,14 @@ type ResourceResult = {
   snippet?: string;
 };
 
+type LLMContext = {
+  currentDepth?: number;
+  ancestorPath?: string[];
+  rootTopic?: string;
+  siblingTopics?: string[];
+  existingTopicNames?: string[];
+};
+
 function parseSubcategories(result: string) {
   let subcategories: string[];
 
@@ -39,10 +47,17 @@ function parseSubcategories(result: string) {
   return subcategories.slice(0, 3).map((s: string) => s.trim()).filter(Boolean);
 }
 
-function getFaviconUrl(url: string) {
+function getFaviconUrl(url: string, iconUrl?: string) {
   try {
-    const hostname = new URL(url).hostname;
-    return `https://www.google.com/s2/favicons?domain=${hostname}&sz=512`;
+    const params = new URLSearchParams({
+      url,
+    });
+
+    if (iconUrl) {
+      params.set('icon', iconUrl);
+    }
+
+    return `/api/favicon?${params.toString()}`;
   } catch {
     return undefined;
   }
@@ -55,10 +70,6 @@ function normaliseResource(
   const profile =
     result.profile && typeof result.profile === 'object'
       ? result.profile as Record<string, unknown>
-      : undefined;
-  const thumbnail =
-    result.thumbnail && typeof result.thumbnail === 'object'
-      ? result.thumbnail as Record<string, unknown>
       : undefined;
   const metaUrl =
     result.meta_url && typeof result.meta_url === 'object'
@@ -83,11 +94,10 @@ function normaliseResource(
   }
 
   const favicon =
-    typeof thumbnail?.src === 'string'
-      ? thumbnail.src
-      : typeof metaUrl?.favicon === 'string'
-        ? metaUrl.favicon
-        : getFaviconUrl(url);
+    getFaviconUrl(
+      url,
+      typeof metaUrl?.favicon === 'string' ? metaUrl.favicon : undefined,
+    );
 
   const snippet =
     typeof result.description === 'string'
@@ -170,22 +180,66 @@ async function fetchResources(category: string) {
 
 export async function POST(request: Request) {
   try {
-    const { category } = await request.json();
+    const { category, searchQuery, llmContext } = await request.json() as {
+      category?: string;
+      searchQuery?: string;
+      llmContext?: LLMContext;
+    };
 
     if (!category) {
       return NextResponse.json({ error: 'Category is required' }, { status: 400 });
     }
+
+    const currentDepth =
+      typeof llmContext?.currentDepth === 'number' ? llmContext.currentDepth : 0;
+    const ancestorPath = Array.isArray(llmContext?.ancestorPath)
+      ? llmContext.ancestorPath.map(String).map((value) => value.trim()).filter(Boolean)
+      : [];
+    const rootTopic =
+      typeof llmContext?.rootTopic === 'string' && llmContext.rootTopic.trim()
+        ? llmContext.rootTopic.trim()
+        : ancestorPath[0] ?? category;
+    const siblingTopics = Array.isArray(llmContext?.siblingTopics)
+      ? llmContext.siblingTopics.map(String).map((value) => value.trim()).filter(Boolean).slice(0, 20)
+      : [];
+    const existingTopicNames = Array.isArray(llmContext?.existingTopicNames)
+      ? llmContext.existingTopicNames
+          .map(String)
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .slice(-80)
+      : [];
+    const depthGuidance =
+      currentDepth < 3
+        ? 'Because the current depth is less than 3, prefer broad, foundational, all-encompassing subtopics that cover the major branches of the current topic.'
+        : `Because the current depth is ${currentDepth}, prefer narrower, more theoretical, conceptual, and advanced subtopics.`;
+    const promptSections = [
+      `Current topic: ${category}`,
+      `Current depth: ${currentDepth}`,
+      `Root topic: ${rootTopic}`,
+      `Ancestor path: ${ancestorPath.length > 0 ? ancestorPath.join(' > ') : 'None'}`,
+      `Sibling topics to avoid: ${siblingTopics.length > 0 ? siblingTopics.join(', ') : 'None'}`,
+      `Existing graph topics to avoid: ${existingTopicNames.length > 0 ? existingTopicNames.join(', ') : 'None'}`,
+      '',
+      depthGuidance,
+      'Generate 3 subcategories for the current topic.',
+      'Each result should be a direct child of the current topic.',
+      'Avoid duplicates and near-duplicates of ancestor topics, sibling topics, and existing graph topics.',
+      'Do not repeat the current topic in different wording.',
+      'Wording must not be long and overly verbose.',
+      'Return only a JSON array of strings, nothing else.',
+    ];
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
-          content: 'You are a helpful assistant that generates subcategories for a given topic. Return around 3 subcategories as a JSON array of strings. Each subcategory should be a specific, meaningful subfield or area within the given category.',
+          content: 'You are a helpful assistant that generates subcategories for a given topic. Each subcategory should be a specific, meaningful child topic of the current topic. Avoid duplicates when context is provided.',
         },
         {
           role: 'user',
-          content: `Generate 3 subcategories for: "${category}". Return only a JSON array of strings, nothing else.`,
+          content: promptSections.join('\n'),
         },
       ],
       response_format: { type: 'json_object' },
@@ -201,7 +255,7 @@ export async function POST(request: Request) {
     let resources: ResourceResult[] = [];
 
     try {
-      resources = await fetchResources(category);
+      resources = await fetchResources(searchQuery || category);
     } catch (resourceError) {
       console.error('Error fetching Brave resources:', resourceError);
     }
