@@ -489,23 +489,15 @@ export default function AppView() {
       >
         <Input
           type="text"
-          placeholder="Search nodes..."
+          placeholder="Search or add nodes..."
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
             setSearchError(false);
           }}
           onKeyDown={handleKeyDown}
-          className="border-0 bg-transparent focus-visible:ring-0 rounded-full w-48 h-8 text-sm"
+          className="border-0 bg-transparent focus-visible:ring-0 rounded-full w-48 h-8 text-sm font-jet"
         />
-        <Button
-          variant="ghost"
-          size="icon"
-          className="rounded-full h-8 w-8"
-          onClick={handleSearch}
-        >
-          <Search className="h-4 w-4" />
-        </Button>
         <Button
           variant="ghost"
           size="icon"
