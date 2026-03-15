@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus } from "lucide-react";
+import { Plus, Link as LinkIcon } from "lucide-react";
 import { useState, useRef, useCallback, useEffect } from "react";
 import {
   GraphData,
@@ -104,7 +104,32 @@ function sanitizeGraphData(graphData: GraphData): GraphData {
   };
 }
 
+function createLinkIconSvgUrl(): string {
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="oklch(0.556 0.092 261.881)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`;
+  return `data:image/svg+xml;base64,${btoa(svgString)}`;
+}
+
+const LINK_ICON_URL = createLinkIconSvgUrl();
+
+function useLinkIconRef() {
+  const linkIconRef = useRef<HTMLImageElement | null>(null);
+  const [, setLinkIconLoaded] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const img = new Image();
+    img.src = LINK_ICON_URL;
+    img.onload = () => {
+      linkIconRef.current = img;
+      setLinkIconLoaded(true);
+    };
+  }, []);
+
+  return linkIconRef;
+}
+
 export default function AppView() {
+  const linkIconRef = useLinkIconRef();
   const { user, onboardingCompleted } = useSession();
   const { playOnce: click } = useSound("click");
   const { playOnce: fan } = useSound("fan");
@@ -146,6 +171,7 @@ export default function AppView() {
   const graphRef = useRef<any>(null);
   const nextId = useRef(getInitialNodes().length);
   const imageCacheRef = useRef(new Map<string, HTMLImageElement | null>());
+  const imageLoadingRef = useRef(new Map<string, boolean>());
   const nodeStatesRef = useRef<Record<number, "idle" | "loading">>({});
   const hoveredNodeRef = useRef<Node | null>(null);
 
@@ -701,28 +727,68 @@ export default function AppView() {
             ctx.fill();
 
             if (!faviconSrc) {
-              // Create placeholder
+              // No favicon URL, show link icon as fallback
               ctx.fillStyle = "#ffffff";
               ctx.beginPath();
               ctx.arc(rectX, rectY, radius, 0, 2 * Math.PI);
               ctx.fill();
+
+              const linkIcon = linkIconRef.current;
+              if (linkIcon && linkIcon.complete) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
+                ctx.clip();
+                ctx.drawImage(linkIcon, rectX, rectY, rectSize, rectSize);
+                ctx.restore();
+              }
             } else {
               // Favicon is present store in cache
               let cachedImage = imageCacheRef.current.get(faviconSrc);
+              const isLoading = imageLoadingRef.current.get(faviconSrc);
+
+              // Draw white background circle
+              ctx.fillStyle = "#ffffff";
+              ctx.beginPath();
+              ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
+              ctx.fill();
 
               if (cachedImage === undefined) {
-                cachedImage = new Image();
-                cachedImage.crossOrigin = "anonymous";
-                cachedImage.onload = () => graphRef.current?.refresh?.();
-                cachedImage.onerror = () => {
-                  imageCacheRef.current.set(faviconSrc, null);
-                  graphRef.current?.refresh?.();
-                };
-                cachedImage.src = faviconSrc;
-                imageCacheRef.current.set(faviconSrc, cachedImage);
-              }
+                if (!isLoading) {
+                  imageLoadingRef.current.set(faviconSrc, true);
+                  cachedImage = new Image();
+                  cachedImage.crossOrigin = "anonymous";
+                  cachedImage.onload = () => {
+                    imageLoadingRef.current.set(faviconSrc, false);
+                    graphRef.current?.refresh?.();
+                  };
+                  cachedImage.onerror = () => {
+                    imageLoadingRef.current.set(faviconSrc, false);
+                    imageCacheRef.current.set(faviconSrc, null);
+                    graphRef.current?.refresh?.();
+                  };
+                  cachedImage.src = faviconSrc;
+                  imageCacheRef.current.set(faviconSrc, cachedImage);
+                }
 
-              if (cachedImage && cachedImage.complete) {
+                // Show loading spinner ring around the node
+                ctx.strokeStyle = "oklch(0.556 0.092 261.881)";
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, radius + 1, 0, Math.PI * 2);
+                ctx.stroke();
+              } else if (cachedImage === null) {
+                // Image failed to load - show link icon
+                const linkIcon = linkIconRef.current;
+                if (linkIcon && linkIcon.complete) {
+                  ctx.save();
+                  ctx.beginPath();
+                  ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
+                  ctx.clip();
+                  ctx.drawImage(linkIcon, rectX, rectY, rectSize, rectSize);
+                  ctx.restore();
+                }
+              } else if (cachedImage.complete) {
                 ctx.save();
                 ctx.beginPath();
                 ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
